@@ -1,0 +1,10 @@
+{
+  "name": "miroir-telephone",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Affiche l'ecran d'un telephone sur l'ordinateur, sans fil",
+  "scripts": {
+    "test": "node --test"
+  }
+}
