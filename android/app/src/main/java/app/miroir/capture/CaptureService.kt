@@ -9,9 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.IBinder
 import app.miroir.R
-import app.miroir.net.ConnectResult
-import app.miroir.net.SignalingClient
-import app.miroir.pairing.PairingPayload
+import app.miroir.ui.SessionHolder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -22,14 +20,12 @@ import kotlinx.coroutines.launch
 class CaptureService : Service() {
     companion object {
         const val EXTRA_PROJECTION = "projection"
-        const val EXTRA_PAIRING = "pairing"
         const val ACTION_STOP = "app.miroir.STOP"
         private const val CANAL = "partage"
         private const val NOTIF_ID = 1
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var signaling: SignalingClient? = null
     private var sender: WebRtcSender? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -40,38 +36,24 @@ class CaptureService : Service() {
             return START_NOT_STICKY
         }
         val projection = intent?.getParcelableExtra<Intent>(EXTRA_PROJECTION)
-        val payload = intent?.getStringExtra(EXTRA_PAIRING)?.let { PairingPayload.parse(it) }
-        if (projection == null || payload == null) {
+        val client = SessionHolder.client
+        if (projection == null || client == null) {
             stopSelf()
             return START_NOT_STICKY
         }
         // Android 14 : le service doit etre au premier plan avant de demarrer la capture.
         startForeground(NOTIF_ID, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
-        CaptureBus.publish(CaptureStatus.Connecting)
-
-        val client = SignalingClient(payload).also { signaling = it }
-        scope.launch {
-            when (val res = client.connect()) {
-                is ConnectResult.Ready -> {
-                    val s = WebRtcSender(applicationContext, client, scope).also { sender = it }
-                    s.start(projection, onStopped = { arreter() })
-                    CaptureBus.publish(CaptureStatus.Streaming)
-                }
-                else -> {
-                    CaptureBus.publish(CaptureStatus.Failed(res))
-                    arreter(garderEtat = true)
-                }
-            }
-        }
+        val s = WebRtcSender(applicationContext, client, scope).also { sender = it }
+        s.start(projection, onStopped = { arreter() })
+        CaptureBus.publish(CaptureStatus.Streaming)
         return START_NOT_STICKY
     }
 
-    private fun arreter(garderEtat: Boolean = false) {
+    private fun arreter() {
         sender?.stop()
         sender = null
-        signaling?.close()
-        signaling = null
-        if (!garderEtat) CaptureBus.publish(CaptureStatus.Idle)
+        SessionHolder.release()
+        CaptureBus.publish(CaptureStatus.Idle)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }

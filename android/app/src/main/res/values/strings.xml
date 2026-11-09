@@ -4,4 +4,23 @@
     <string name="canal_partage">Partage d\'écran</string>
     <string name="partage_en_cours">Partage d\'écran en cours</string>
     <string name="arreter">Arrêter</string>
+    <string name="annuler">Annuler</string>
+    <string name="reessayer">Réessayer</string>
+
+    <string name="titre_accueil">Afficher mon écran sur le Mac</string>
+    <string name="explication_accueil">Ouvre l\'application Miroir Téléphone sur le Mac, puis touche le bouton ci-dessous et scanne le QR code affiché sur le Mac. Le téléphone et le Mac doivent être sur le même Wi-Fi.</string>
+    <string name="bouton_partager">Scanner le QR code</string>
+    <string name="aide_batterie">Si le partage s\'arrête quand l\'écran se verrouille (Xiaomi, Samsung, Tecno), désactive l\'économie de batterie pour cette application dans les réglages d\'Android.</string>
+
+    <string name="consigne_scan">Vise le QR code affiché sur le Mac</string>
+    <string name="connexion_en_cours">Connexion au Mac en cours…</string>
+    <string name="attente_autorisation">Autorise le partage d\'écran quand Android te le demande.</string>
+    <string name="partage_actif">Ton écran est affiché sur le Mac.</string>
+
+    <string name="erreur_camera">La caméra est nécessaire pour scanner le QR code. Ouvre les réglages de l\'application et autorise la caméra, puis réessaie.</string>
+    <string name="erreur_capture">Le partage d\'écran a été annulé. Touche « Démarrer maintenant » quand Android te le demande.</string>
+    <string name="erreur_injoignable">Impossible de joindre le Mac. Si le Wi-Fi isole les appareils, active le point d\'accès de ce téléphone et connecte le Mac dessus.</string>
+    <string name="erreur_expire">Ce QR code a expiré ou a déjà été utilisé. Scanne le nouveau code affiché sur le Mac.</string>
+    <string name="erreur_occupe">Un autre téléphone est déjà connecté à ce Mac.</string>
+    <string name="erreur_coupure">La connexion avec le Mac a été perdue.</string>
 </resources>
