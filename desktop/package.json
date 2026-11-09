@@ -6,7 +6,8 @@
   "description": "Affiche l'ecran d'un telephone sur l'ordinateur, sans fil",
   "scripts": {
     "test": "node --test --test-timeout=15000",
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder --mac --arm64 --x64"
   },
   "dependencies": {
     "qrcode": "^1.5.4",
@@ -15,6 +16,7 @@
   },
   "main": "electron/main.js",
   "devDependencies": {
-    "electron": "^45.2.3"
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0"
   }
 }

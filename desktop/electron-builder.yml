@@ -1,0 +1,21 @@
+appId: bj.asin.miroir
+productName: Miroir Telephone
+asar: true
+electronLanguages:
+  - fr
+  - en
+files:
+  - src/**
+  - electron/**
+  - package.json
+  - "!**/test/**"
+  - "!**/*.test.js"
+mac:
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+  identity: null
+directories:
+  output: dist
