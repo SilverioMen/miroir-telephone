@@ -5,12 +5,15 @@ import app.miroir.net.ConnectResult
 import app.miroir.pairing.PairingPayload
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 class MirrorViewModel(
     private val connector: Connector,
     private val scope: CoroutineScope,
+    private val reconnectWindowMs: Long = 120_000,
+    private val retryMs: Long = 2_000,
 ) : ViewModel() {
     constructor() : this(DefaultConnector(), CoroutineScope(kotlinx.coroutines.Dispatchers.Main.immediate))
 
@@ -47,6 +50,26 @@ class MirrorViewModel(
         } else {
             connector.release()
             etat.value = MirrorState.Error(ErrorKind.CaptureDenied)
+        }
+    }
+
+    /** Coupure pendant le partage : on retente la reprise pendant 2 minutes, sans nouveau scan. */
+    fun onConnectionLost() {
+        if (etat.value != MirrorState.Streaming) return
+        etat.value = MirrorState.Connecting
+        scope.launch {
+            val debut = System.currentTimeMillis()
+            while (true) {
+                when (connector.reconnect()) {
+                    is ConnectResult.Ready -> { etat.value = MirrorState.Streaming; return@launch }
+                    is ConnectResult.Rejected -> break
+                    ConnectResult.Unreachable -> Unit
+                }
+                if (System.currentTimeMillis() - debut >= reconnectWindowMs) break
+                delay(retryMs)
+            }
+            connector.release()
+            etat.value = MirrorState.Error(ErrorKind.Dropped)
         }
     }
 

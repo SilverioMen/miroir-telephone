@@ -31,26 +31,34 @@ class SignalingClientTest {
         serveurs.forEach { runCatching { it.shutdown() } }
     }
 
-    private class Serveur(val server: MockWebServer, val empreinte: String)
+    private class Serveur(val server: MockWebServer, val empreinte: String) {
+        val sockets = java.util.concurrent.CopyOnWriteArrayList<WebSocket>()
+        val recus = java.util.concurrent.CopyOnWriteArrayList<String>()
+    }
 
     private fun empreinteDe(hc: HeldCertificate): String =
         MessageDigest.getInstance("SHA-256").digest(hc.certificate.encoded)
             .joinToString("") { "%02x".format(it) }
 
-    private fun demarre(reponse: (String) -> String?): Serveur {
+    private fun demarre(connexions: Int = 1, reponse: (String) -> String?): Serveur {
         val hc = HeldCertificate.Builder().addSubjectAlternativeName("127.0.0.1").build()
         val tls = HandshakeCertificates.Builder().heldCertificate(hc).build()
         val server = MockWebServer()
         server.useHttps(tls.sslSocketFactory(), false)
-        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
-            override fun onMessage(webSocket: WebSocket, text: String) {
-                reponse(text)?.let { webSocket.send(it) }
-            }
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {}
-        }))
+        val resultat = Serveur(server, empreinteDe(hc))
+        repeat(connexions) {
+            server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+                override fun onOpen(webSocket: WebSocket, response: Response) { resultat.sockets += webSocket }
+                override fun onMessage(webSocket: WebSocket, text: String) {
+                    resultat.recus += text
+                    reponse(text)?.let { webSocket.send(it) }
+                }
+                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {}
+            }))
+        }
         server.start()
         serveurs += server
-        return Serveur(server, empreinteDe(hc))
+        return resultat
     }
 
     private fun client(s: Serveur, adresses: List<String> = listOf("127.0.0.1"), empreinte: String = s.empreinte): SignalingClient {
@@ -118,5 +126,48 @@ class SignalingClientTest {
         assertEquals(ice, SignalMessage.parse(ice.toJson()))
         assertEquals(SignalMessage.Bye, SignalMessage.parse(SignalMessage.Bye.toJson()))
         assertEquals(null, SignalMessage.parse("pas du json"))
+    }
+
+    @Test
+    fun `dropped est emis quand le serveur coupe apres Ready mais pas apres close`() = runBlocking {
+        val s = demarre { """{"type":"ready","resumeKey":"k5"}""" }
+        val c = client(s)
+        assertEquals(ConnectResult.Ready("k5"), c.connect())
+        val perte = coroutineScope {
+            val attente = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(3000) { c.dropped.first() } }
+            s.sockets.first().close(1001, "coupure")
+            attente.await()
+        }
+        assertEquals(Unit, perte)
+
+        val s2 = demarre { """{"type":"ready","resumeKey":"k6"}""" }
+        val c2 = client(s2)
+        c2.connect()
+        val emis = coroutineScope {
+            val attente = async(start = CoroutineStart.UNDISPATCHED) { kotlinx.coroutines.withTimeoutOrNull(500) { c2.dropped.first() } }
+            c2.close()
+            attente.await()
+        }
+        assertEquals(null, emis)
+    }
+
+    @Test
+    fun `reconnect envoie resume avec la cle recue et renvoie Ready`() = runBlocking {
+        val s = demarre(connexions = 2) { texte ->
+            if (texte.contains("hello")) """{"type":"ready","resumeKey":"k7"}"""
+            else if (texte.contains("resume")) """{"type":"ready","resumeKey":"k7"}"""
+            else null
+        }
+        val c = client(s)
+        assertEquals(ConnectResult.Ready("k7"), c.connect())
+        s.sockets.first().close(1001, "coupure")
+        assertEquals(ConnectResult.Ready("k7"), c.reconnect())
+        assertTrue(s.recus.any { it.contains(""""type":"resume"""") && it.contains(""""resumeKey":"k7"""") })
+    }
+
+    @Test
+    fun `reconnect sans connexion prealable renvoie Rejected invalid_token`() = runBlocking {
+        val s = demarre { null }
+        assertEquals(ConnectResult.Rejected("invalid_token"), client(s).reconnect())
     }
 }

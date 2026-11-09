@@ -68,30 +68,38 @@ class WebRtcSender(
         val (w, hh) = tailleCapture()
         cap.startCapture(w, hh, FPS)
 
-        val t = f.createVideoTrack("ecran", s).also { track = it }
+        track = f.createVideoTrack("ecran", s)
+        ouvrirConnexion()
+
+        ecoute = scope.launch {
+            launch {
+                signaling.incoming.collect { msg ->
+                    when (msg) {
+                        is SignalMessage.Answer -> pc?.setRemoteDescription(SdpVide, SessionDescription(SessionDescription.Type.ANSWER, msg.sdp))
+                        is SignalMessage.Ice -> pc?.addIceCandidate(IceCandidate(msg.sdpMid, msg.sdpMLineIndex, msg.candidate))
+                        SignalMessage.Bye -> onStopped()
+                        is SignalMessage.Offer -> Unit
+                    }
+                }
+            }
+            // Apres une reprise, le Mac a ferme sa connexion : on en recree une avec la meme capture.
+            launch { signaling.resumed.collect { pc?.close(); pc?.dispose(); ouvrirConnexion() } }
+        }
+    }
+
+    private fun ouvrirConnexion() {
+        val f = factory!!
         val config = PeerConnection.RTCConfiguration(emptyList()).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
         }
         val connexion = f.createPeerConnection(config, observateur())!!.also { pc = it }
-        val sender = connexion.addTrack(t, listOf("miroir"))
+        val sender = connexion.addTrack(track!!, listOf("miroir"))
         val params = sender.parameters
         params.encodings.forEach {
             it.maxBitrateBps = DEBIT_MAX_BPS
             it.maxFramerate = FPS
         }
         sender.parameters = params
-
-        ecoute = scope.launch {
-            signaling.incoming.collect { msg ->
-                when (msg) {
-                    is SignalMessage.Answer -> connexion.setRemoteDescription(SdpVide, SessionDescription(SessionDescription.Type.ANSWER, msg.sdp))
-                    is SignalMessage.Ice -> connexion.addIceCandidate(IceCandidate(msg.sdpMid, msg.sdpMLineIndex, msg.candidate))
-                    SignalMessage.Bye -> onStopped()
-                    is SignalMessage.Offer -> Unit
-                }
-            }
-        }
-
         connexion.createOffer(object : SdpVide() {
             override fun onCreateSuccess(sdp: SessionDescription) {
                 connexion.setLocalDescription(SdpVide, sdp)

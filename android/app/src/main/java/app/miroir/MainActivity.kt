@@ -26,6 +26,7 @@ import app.miroir.ui.MirrorState
 import app.miroir.ui.MirrorViewModel
 import app.miroir.ui.QrScannerScreen
 import app.miroir.ui.ScanOverlay
+import app.miroir.ui.SessionHolder
 import app.miroir.ui.messageErreur
 
 class MainActivity : ComponentActivity() {
@@ -59,6 +60,7 @@ class MainActivity : ComponentActivity() {
         LaunchedEffect(urlDeTest) {
             if (urlDeTest != null) { vm.onScanRequested(); vm.onQrScanned(urlDeTest) }
         }
+        LaunchedEffect(Unit) { SessionHolder.lost.collect { vm.onConnectionLost() } }
         LaunchedEffect(etat) {
             if (etat == MirrorState.AwaitingCapturePermission) notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
         }

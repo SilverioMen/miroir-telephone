@@ -32,8 +32,22 @@ class SignalingClient(
     private val flux = MutableSharedFlow<SignalMessage>(extraBufferCapacity = 64)
     val incoming: SharedFlow<SignalMessage> = flux.asSharedFlow()
 
+    private val perte = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+    /** Emis quand la connexion tombe sans que nous l'ayons fermee (verrouillage, Wi-Fi coupe...). */
+    val dropped: SharedFlow<Unit> = perte.asSharedFlow()
+
+    private val reprise = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+    /** Emis apres une reprise reussie : l'envoi video doit renegocier. */
+    val resumed: SharedFlow<Unit> = reprise.asSharedFlow()
+
     @Volatile
     private var socket: WebSocket? = null
+
+    @Volatile
+    private var resumeKey: String? = null
+
+    @Volatile
+    private var ferme = false
 
     private val trustManager = FingerprintTrustManager(payload.fingerprint)
     private val client: OkHttpClient = run {
@@ -47,21 +61,32 @@ class SignalingClient(
             .build()
     }
 
-    suspend fun connect(): ConnectResult {
+    suspend fun connect(): ConnectResult =
+        essaieToutes(JSONObject().put("type", "hello").put("token", payload.token).toString())
+
+    /** Reprend la session apres une coupure, sans nouveau scan. */
+    suspend fun reconnect(): ConnectResult {
+        val cle = resumeKey ?: return ConnectResult.Rejected("invalid_token")
+        val res = essaieToutes(JSONObject().put("type", "resume").put("resumeKey", cle).toString())
+        if (res is ConnectResult.Ready) reprise.tryEmit(Unit)
+        return res
+    }
+
+    private suspend fun essaieToutes(premierMessage: String): ConnectResult {
         for (adresse in payload.addresses) {
-            val res = essaie(adresse)
+            val res = essaie(adresse, premierMessage)
             if (res !is ConnectResult.Unreachable) return res
         }
         return ConnectResult.Unreachable
     }
 
-    private suspend fun essaie(adresse: String): ConnectResult {
+    private suspend fun essaie(adresse: String, premierMessage: String): ConnectResult {
         val resultat = CompletableDeferred<ConnectResult>()
         var poignee = false
         val requete = Request.Builder().url("wss://$adresse:${payload.port}/ws/phone").build()
         val ws = client.newWebSocket(requete, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                webSocket.send(JSONObject().put("type", "hello").put("token", payload.token).toString())
+                webSocket.send(premierMessage)
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -78,15 +103,35 @@ class SignalingClient(
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 resultat.complete(ConnectResult.Unreachable)
+                signalerPerte(webSocket)
+            }
+
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                resultat.complete(ConnectResult.Unreachable)
+                signalerPerte(webSocket)
+                webSocket.close(code, null)
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 resultat.complete(ConnectResult.Unreachable)
+                signalerPerte(webSocket)
             }
         })
         val res = withTimeoutOrNull(connectTimeoutMs) { resultat.await() } ?: ConnectResult.Unreachable
-        if (res is ConnectResult.Ready) socket = ws else ws.cancel()
+        if (res is ConnectResult.Ready) {
+            socket = ws
+            resumeKey = res.resumeKey
+        } else {
+            ws.cancel()
+        }
         return res
+    }
+
+    private fun signalerPerte(ws: WebSocket) {
+        if (!ferme && socket === ws) {
+            socket = null
+            perte.tryEmit(Unit)
+        }
     }
 
     fun send(msg: SignalMessage) {
@@ -94,6 +139,7 @@ class SignalingClient(
     }
 
     fun close() {
+        ferme = true
         socket?.close(1000, null)
         socket = null
         client.dispatcher.executorService.shutdown()
