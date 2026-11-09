@@ -32,7 +32,7 @@ const FICHIERS = {
   '/receiver.js': ['receiver.js', 'text/javascript; charset=utf-8'],
 };
 
-export async function startServer({ sessions, cert, port = 0, staticDir = null, addresses = listLocalAddresses }) {
+export async function startServer({ sessions, cert, port = 0, staticDir = null, addresses = listLocalAddresses, pingMs = 15000 }) {
   let portReel = 0;
   const pairingUrl = () => buildPairingUrl({
     addresses: addresses(),
@@ -75,6 +75,17 @@ export async function startServer({ sessions, cert, port = 0, staticDir = null, 
   let telephone = null;
   let recepteur = null;
   let derniereOffre = null;
+
+  // Detecte un telephone disparu sans fermeture TCP : pas de pong avant le ping suivant, on coupe.
+  const battement = setInterval(() => {
+    wss.clients.forEach((c) => {
+      if (c.vivant === false) return c.terminate();
+      c.vivant = false;
+      c.ping();
+    });
+  }, pingMs);
+  battement.unref();
+  wss.on('connection', (c) => { c.vivant = true; c.on('pong', () => { c.vivant = true; }); });
 
   const notifier = (etat) => abonnes.forEach((cb) => cb(etat));
 
@@ -143,7 +154,10 @@ export async function startServer({ sessions, cert, port = 0, staticDir = null, 
     if (derniereOffre) envoyer(ws, derniereOffre);
     ws.on('message', (data) => {
       const msg = lire(data);
-      if (msg && versTelephone.has(msg.type)) envoyer(telephone, msg);
+      if (!msg || !versTelephone.has(msg.type)) return;
+      envoyer(telephone, msg);
+      // Arret demande depuis le Mac : on libere aussi la place du telephone.
+      if (msg.type === 'bye' && telephone) telephone.close();
     });
     ws.on('close', () => { if (recepteur === ws) recepteur = null; });
   }
@@ -172,6 +186,8 @@ export async function startServer({ sessions, cert, port = 0, staticDir = null, 
     pairingUrl,
     onPhoneState(cb) { abonnes.push(cb); },
     close() {
+      clearInterval(battement);
+      envoyer(telephone, { type: 'bye' });
       wss.clients.forEach((c) => c.terminate());
       wss.close();
       server.closeAllConnections();

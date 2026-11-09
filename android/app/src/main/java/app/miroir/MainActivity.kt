@@ -71,6 +71,13 @@ class MainActivity : ComponentActivity() {
             else if (bus == CaptureStatus.Idle && avaitPartage) { avaitPartage = false; vm.onStop() }
         }
 
+        // Coupure definitive : on arrete aussi le service (capture, notification) au lieu de l'abandonner.
+        LaunchedEffect(etat, bus) {
+            if (etat is MirrorState.Error && bus == CaptureStatus.Streaming) {
+                startService(Intent(this@MainActivity, CaptureService::class.java).setAction(CaptureService.ACTION_STOP))
+            }
+        }
+
         when (val s = etat) {
             MirrorState.Idle -> HomeScreen(onStart = { vm.onScanRequested(); camera.launch(Manifest.permission.CAMERA) })
             MirrorState.Scanning -> { QrScannerScreen(onQr = vm::onQrScanned); ScanOverlay(onCancel = vm::onStop) }

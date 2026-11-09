@@ -26,4 +26,4 @@ Affiche l'écran d'un téléphone Android sur un Mac, sans fil, en scannant un Q
 | DMG x64 | 118 Mo | 120 Mo |
 | APK (arm64-v8a et armeabi-v7a) | 52 Mo | - |
 
-Latence médiane mesurée : 106 ms (cible 300 ms). Le seuil de poids est de 120 Mo depuis la décision sur la coque (`docs/décision-coque.md`).
+Latence médiane mesurée : 106 ms (cible 300 ms). Le seuil de poids est de 120 Mo depuis la décision sur la coque (`docs/decision-coque.md`).
