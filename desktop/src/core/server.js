@@ -1,4 +1,7 @@
 import https from 'node:https';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import QRCode from 'qrcode';
 import { WebSocketServer } from 'ws';
 import { buildPairingUrl } from './pairing.js';
 import { listLocalAddresses } from './network.js';
@@ -22,11 +25,49 @@ function envoyer(ws, obj) {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
 }
 
-export async function startServer({ sessions, cert, port = 0, addresses = listLocalAddresses }) {
-  const server = https.createServer({ key: cert.key, cert: cert.cert }, (req, res) => {
-    res.statusCode = 404;
-    res.end();
+const FICHIERS = {
+  '/receiver': ['index.html', 'text/html; charset=utf-8'],
+  '/receiver.js': ['receiver.js', 'text/javascript; charset=utf-8'],
+};
+
+export async function startServer({ sessions, cert, port = 0, staticDir = null, addresses = listLocalAddresses }) {
+  let portReel = 0;
+  const pairingUrl = () => buildPairingUrl({
+    addresses: addresses(),
+    port: portReel,
+    token: sessions.issueToken(),
+    fingerprint: cert.fingerprint,
   });
+
+  async function repondre(req, res) {
+    const chemin = new URL(req.url, 'https://miroir.local').pathname;
+    const route = FICHIERS[chemin];
+    const connu = route || chemin === '/qr.svg';
+    if (!connu) {
+      res.statusCode = 404;
+      return res.end();
+    }
+    if (!LOOPBACK.has(req.socket.remoteAddress)) {
+      res.statusCode = 403;
+      return res.end();
+    }
+    try {
+      if (chemin === '/qr.svg') {
+        const svg = await QRCode.toString(pairingUrl(), { type: 'svg', margin: 1 });
+        res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'no-store' });
+        return res.end(svg);
+      }
+      const [fichier, type] = route;
+      const contenu = await readFile(path.join(staticDir, fichier));
+      res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store' });
+      res.end(contenu);
+    } catch {
+      res.statusCode = 500;
+      res.end();
+    }
+  }
+
+  const server = https.createServer({ key: cert.key, cert: cert.cert }, repondre);
   const wss = new WebSocketServer({ noServer: true });
   const abonnes = [];
   let telephone = null;
@@ -122,18 +163,11 @@ export async function startServer({ sessions, cert, port = 0, addresses = listLo
     server.once('error', ko);
     server.listen(port, '0.0.0.0', ok);
   });
-  const portReel = server.address().port;
+  portReel = server.address().port;
 
   return {
     port: portReel,
-    pairingUrl() {
-      return buildPairingUrl({
-        addresses: addresses(),
-        port: portReel,
-        token: sessions.issueToken(),
-        fingerprint: cert.fingerprint,
-      });
-    },
+    pairingUrl,
     onPhoneState(cb) { abonnes.push(cb); },
     close() {
       wss.clients.forEach((c) => c.terminate());

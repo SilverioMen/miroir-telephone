@@ -5,10 +5,16 @@
   "type": "module",
   "description": "Affiche l'ecran d'un telephone sur l'ordinateur, sans fil",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test --test-timeout=15000",
+    "start": "electron ."
   },
   "dependencies": {
+    "qrcode": "^1.5.4",
     "selfsigned": "^5.5.0",
     "ws": "^8.22.2"
+  },
+  "main": "electron/main.js",
+  "devDependencies": {
+    "electron": "^45.2.3"
   }
 }
