@@ -6,5 +6,9 @@
   "description": "Affiche l'ecran d'un telephone sur l'ordinateur, sans fil",
   "scripts": {
     "test": "node --test"
+  },
+  "dependencies": {
+    "selfsigned": "^5.5.0",
+    "ws": "^8.22.2"
   }
 }

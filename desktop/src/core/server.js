@@ -1,0 +1,145 @@
+import https from 'node:https';
+import { WebSocketServer } from 'ws';
+import { buildPairingUrl } from './pairing.js';
+import { listLocalAddresses } from './network.js';
+
+const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+const DELAI_HELLO_MS = 5000;
+
+const versTelephone = new Set(['answer', 'ice', 'bye']);
+const versRecepteur = new Set(['offer', 'ice', 'bye']);
+
+function lire(data) {
+  try {
+    const msg = JSON.parse(data.toString());
+    return msg && typeof msg.type === 'string' ? msg : null;
+  } catch {
+    return null;
+  }
+}
+
+function envoyer(ws, obj) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
+}
+
+export async function startServer({ sessions, cert, port = 0, addresses = listLocalAddresses }) {
+  const server = https.createServer({ key: cert.key, cert: cert.cert }, (req, res) => {
+    res.statusCode = 404;
+    res.end();
+  });
+  const wss = new WebSocketServer({ noServer: true });
+  const abonnes = [];
+  let telephone = null;
+  let recepteur = null;
+  let derniereOffre = null;
+
+  const notifier = (etat) => abonnes.forEach((cb) => cb(etat));
+
+  function accepter(ws, resumeKey) {
+    if (telephone && telephone !== ws) {
+      const ancien = telephone;
+      telephone = null;
+      ancien.terminate();
+    }
+    telephone = ws;
+    sessions.setActivePhone(true);
+    notifier('connected');
+    envoyer(ws, { type: 'ready', resumeKey });
+  }
+
+  function attacherTelephone(ws) {
+    let authentifie = false;
+    const minuteur = setTimeout(() => { if (!authentifie) ws.close(); }, DELAI_HELLO_MS);
+
+    ws.on('message', (data) => {
+      const msg = lire(data);
+      if (!msg) return;
+      if (!authentifie) {
+        if (msg.type === 'hello') {
+          if (sessions.hasActivePhone()) {
+            envoyer(ws, { type: 'error', reason: 'busy' });
+            return ws.close();
+          }
+          const res = sessions.redeemToken(msg.token);
+          if (!res.ok) {
+            envoyer(ws, { type: 'error', reason: res.reason });
+            return ws.close();
+          }
+          authentifie = true;
+          accepter(ws, res.resumeKey);
+        } else if (msg.type === 'resume') {
+          if (!sessions.resume(msg.resumeKey)) {
+            envoyer(ws, { type: 'error', reason: 'expired' });
+            return ws.close();
+          }
+          authentifie = true;
+          accepter(ws, msg.resumeKey);
+        }
+        return;
+      }
+      if (!versRecepteur.has(msg.type)) return;
+      if (msg.type === 'offer') derniereOffre = msg;
+      if (msg.type === 'bye') derniereOffre = null;
+      envoyer(recepteur, msg);
+    });
+
+    ws.on('close', () => {
+      clearTimeout(minuteur);
+      if (telephone !== ws) return;
+      telephone = null;
+      derniereOffre = null;
+      sessions.setActivePhone(false);
+      sessions.markDisconnected();
+      envoyer(recepteur, { type: 'bye' });
+      notifier('disconnected');
+    });
+  }
+
+  function attacherRecepteur(ws) {
+    recepteur = ws;
+    if (derniereOffre) envoyer(ws, derniereOffre);
+    ws.on('message', (data) => {
+      const msg = lire(data);
+      if (msg && versTelephone.has(msg.type)) envoyer(telephone, msg);
+    });
+    ws.on('close', () => { if (recepteur === ws) recepteur = null; });
+  }
+
+  server.on('upgrade', (req, socket, head) => {
+    const chemin = new URL(req.url, 'https://miroir.local').pathname;
+    const local = LOOPBACK.has(req.socket.remoteAddress);
+    if (chemin === '/ws/phone') {
+      wss.handleUpgrade(req, socket, head, attacherTelephone);
+    } else if (chemin === '/ws/receiver' && local) {
+      wss.handleUpgrade(req, socket, head, attacherRecepteur);
+    } else {
+      socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+    }
+  });
+
+  await new Promise((ok, ko) => {
+    server.once('error', ko);
+    server.listen(port, '0.0.0.0', ok);
+  });
+  const portReel = server.address().port;
+
+  return {
+    port: portReel,
+    pairingUrl() {
+      return buildPairingUrl({
+        addresses: addresses(),
+        port: portReel,
+        token: sessions.issueToken(),
+        fingerprint: cert.fingerprint,
+      });
+    },
+    onPhoneState(cb) { abonnes.push(cb); },
+    close() {
+      wss.clients.forEach((c) => c.terminate());
+      wss.close();
+      server.closeAllConnections();
+      return new Promise((ok) => server.close(() => ok()));
+    },
+  };
+}
