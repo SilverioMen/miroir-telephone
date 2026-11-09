@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Miroir Téléphone</string>
+    <string name="canal_partage">Partage d\'écran</string>
+    <string name="partage_en_cours">Partage d\'écran en cours</string>
+    <string name="arreter">Arrêter</string>
 </resources>
