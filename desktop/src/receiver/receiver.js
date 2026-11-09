@@ -5,6 +5,10 @@ const video = document.getElementById('video');
 const etat = document.getElementById('etat');
 const qr = document.getElementById('qr');
 const debug = document.getElementById('debug');
+const ongletAndroid = document.getElementById('onglet-android');
+const ongletIphone = document.getElementById('onglet-iphone');
+const panneauAndroid = document.getElementById('panneau-android');
+const panneauIphone = document.getElementById('panneau-iphone');
 const modeDebug = new URLSearchParams(location.search).get('debug') === '1';
 
 let pc = null;
@@ -17,8 +21,25 @@ function afficher(connecte) {
   if (!connecte) {
     etat.textContent = 'En attente du téléphone';
     qr.src = '/qr.svg?' + Date.now();
+    if (window.miroir) window.miroir.reset();
   }
 }
+
+function choisirOnglet(iphone) {
+  ongletAndroid.setAttribute('aria-selected', String(!iphone));
+  ongletIphone.setAttribute('aria-selected', String(iphone));
+  panneauAndroid.classList.toggle('cache', iphone);
+  panneauIphone.classList.toggle('cache', !iphone);
+}
+ongletAndroid.addEventListener('click', () => choisirOnglet(false));
+ongletIphone.addEventListener('click', () => choisirOnglet(true));
+document.getElementById('reglages').addEventListener('click', () => {
+  if (window.miroir) window.miroir.ouvrirReglagesPartage();
+});
+document.getElementById('arreter').addEventListener('click', () => {
+  envoyer({ type: 'bye' });
+  fermerConnexion();
+});
 
 function envoyer(obj) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
@@ -80,6 +101,6 @@ function ouvrir() {
 // Le jeton du QR expire : on le renouvelle tant qu'aucun téléphone n'est connecté.
 setInterval(() => { if (!pc) qr.src = '/qr.svg?' + Date.now(); }, 100000);
 video.addEventListener('resize', () => {
-  if (window.miroir && video.videoWidth) window.miroir.resize(video.videoWidth, video.videoHeight);
+  if (window.miroir && video.videoWidth) window.miroir.redimensionner(video.videoWidth, video.videoHeight);
 });
 ouvrir();

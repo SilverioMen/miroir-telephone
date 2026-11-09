@@ -21,7 +21,7 @@ function get(port, chemin, hote = '127.0.0.1') {
     https.get({ host: hote, port, path: chemin, rejectUnauthorized: false }, (res) => {
       let corps = '';
       res.on('data', (d) => { corps += d; });
-      res.on('end', () => ok({ status: res.statusCode, type: res.headers['content-type'], corps }));
+      res.on('end', () => ok({ status: res.statusCode, type: res.headers['content-type'], csp: res.headers['content-security-policy'], corps }));
     }).on('error', ko);
   });
 }
@@ -33,6 +33,25 @@ test('receiver-assets: GET /receiver renvoie du HTML contenant une balise video'
   assert.equal(rep.status, 200);
   assert.match(rep.type, /text\/html/);
   assert.match(rep.corps, /<video/);
+});
+
+test('receiver-assets: la page propose l\'onglet iPhone, le bouton Arrêter et la note sur le noir', async (t) => {
+  const srv = await demarre();
+  t.after(() => srv.close());
+  const { corps } = await get(srv.port, '/receiver');
+  assert.match(corps, /iPhone/);
+  assert.match(corps, /Recopie de l'écran/);
+  assert.match(corps, /Arrêter/);
+  assert.match(corps, /apparaît en noir/);
+});
+
+test('receiver-assets: la page est servie avec une politique de sécurité de contenu stricte', async (t) => {
+  const srv = await demarre();
+  t.after(() => srv.close());
+  const { csp } = await get(srv.port, '/receiver');
+  assert.match(csp, /default-src 'self'/);
+  assert.match(csp, /script-src 'self'/);
+  assert.doesNotMatch(csp, /unsafe-eval/);
 });
 
 test('receiver-assets: GET /receiver.js renvoie du JavaScript', async (t) => {

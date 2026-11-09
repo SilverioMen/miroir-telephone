@@ -8,6 +8,8 @@ import { listLocalAddresses } from './network.js';
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 const DELAI_HELLO_MS = 5000;
+const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+  + "connect-src 'self' wss://127.0.0.1:*; media-src 'self' blob:";
 
 const versTelephone = new Set(['answer', 'ice', 'bye']);
 const versRecepteur = new Set(['offer', 'ice', 'bye']);
@@ -59,7 +61,7 @@ export async function startServer({ sessions, cert, port = 0, staticDir = null, 
       }
       const [fichier, type] = route;
       const contenu = await readFile(path.join(staticDir, fichier));
-      res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store' });
+      res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store', 'Content-Security-Policy': CSP });
       res.end(contenu);
     } catch {
       res.statusCode = 500;
