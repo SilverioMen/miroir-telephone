@@ -60,3 +60,15 @@ test('fin: telephone muet (sans pong) est coupe par le ping serveur', async () =
   await Promise.race([tel.ferme, new Promise((_, ko) => setTimeout(() => ko(new Error('pas de coupure')), 1500))]);
   await srv.close();
 });
+
+test('fin: un telephone qui envoie ses propres ping reste en vie meme sans repondre aux notres', async () => {
+  const srv = await demarre({ pingMs: 50 });
+  const tel = await appaire(srv, { autoPong: false });
+  const rythme = setInterval(() => { try { tel.ping(); } catch { /* socket fermee */ } }, 20);
+  let ferme = false;
+  tel.ferme.then(() => { ferme = true; });
+  await new Promise((r) => setTimeout(r, 500));
+  clearInterval(rythme);
+  assert.equal(ferme, false, 'le telephone actif a ete coupe');
+  tel.close(); await srv.close();
+});

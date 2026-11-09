@@ -61,13 +61,15 @@ function surveiller() {
     const stats = await pc.getStats();
     let rtt = 0;
     let tampon = 0;
+    let extra = '';
     stats.forEach((r) => {
       if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.currentRoundTripTime) rtt = r.currentRoundTripTime * 1000;
       if (r.type === 'inbound-rtp' && r.kind === 'video' && r.jitterBufferEmittedCount) {
         tampon = (r.jitterBufferDelay / r.jitterBufferEmittedCount) * 1000;
+        extra = ` | ${r.frameWidth}x${r.frameHeight} ${Math.round(r.framesPerSecond || 0)} i/s, perdues ${r.framesDropped || 0}, gels ${r.freezeCount || 0}, decodage ${Math.round(((r.totalDecodeTime || 0) / (r.framesDecoded || 1)) * 1000)} ms`;
       }
     });
-    debug.textContent = `latence estimée ${Math.round(rtt / 2 + tampon)} ms (aller-retour ${Math.round(rtt)} ms, tampon ${Math.round(tampon)} ms)`;
+    debug.textContent = `latence estimée ${Math.round(rtt / 2 + tampon)} ms (aller-retour ${Math.round(rtt)} ms, tampon ${Math.round(tampon)} ms)${extra}`;
   }, 1000);
 }
 

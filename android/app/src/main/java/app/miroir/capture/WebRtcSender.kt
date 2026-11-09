@@ -25,7 +25,7 @@ import org.webrtc.SurfaceTextureHelper
 import org.webrtc.VideoSource
 import org.webrtc.VideoTrack
 
-/** Capture l'ecran et l'envoie en WebRTC a l'app de bureau. Reglages initiaux : 1280 px, 30 i/s, 4 Mbit/s. */
+/** Capture l'ecran et l'envoie en WebRTC a l'app de bureau. Reglages initiaux : 1280 px, 30 i/s, 8 Mbit/s. */
 class WebRtcSender(
     private val context: Context,
     private val signaling: SignalingClient,
@@ -34,7 +34,7 @@ class WebRtcSender(
     companion object {
         private const val GRAND_COTE = 1280
         private const val FPS = 30
-        private const val DEBIT_MAX_BPS = 4_000_000
+        private const val DEBIT_MAX_BPS = 8_000_000
         private var initialise = false
     }
 

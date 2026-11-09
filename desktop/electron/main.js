@@ -52,7 +52,7 @@ app.whenReady().then(async () => {
       shell.openExternal('x-apple.systempreferences:com.apple.preferences.sharing');
     }
   });
-  fenetre.loadURL(`https://127.0.0.1:${serveur.port}/receiver`);
+  fenetre.loadURL(`https://127.0.0.1:${serveur.port}/receiver${process.env.MIROIR_DEBUG === '1' ? '?debug=1' : ''}`);
 });
 
 app.on('window-all-closed', () => {

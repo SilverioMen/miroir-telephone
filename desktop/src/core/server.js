@@ -85,9 +85,20 @@ export async function startServer({ sessions, cert, port = 0, staticDir = null, 
     });
   }, pingMs);
   battement.unref();
-  wss.on('connection', (c) => { c.vivant = true; c.on('pong', () => { c.vivant = true; }); });
+  // wss.emit('connection') n'est pas appele avec handleUpgrade(..., cb) : on branche le suivi nous-memes.
+  function suivreVie(c) {
+    c.vivant = true;
+    // Tout signe de vie compte : pong, ping du telephone (OkHttp en envoie toutes les 10 s) ou message.
+    const vivant = () => { c.vivant = true; };
+    c.on('pong', vivant);
+    c.on('ping', vivant);
+    c.on('message', vivant);
+  }
 
-  const notifier = (etat) => abonnes.forEach((cb) => cb(etat));
+  const notifier = (etat) => {
+    if (process.env.MIROIR_DEBUG === '1') console.log(`[${new Date().toISOString()}] telephone ${etat}`);
+    abonnes.forEach((cb) => cb(etat));
+  };
 
   function accepter(ws, resumeKey) {
     if (telephone && telephone !== ws) {
@@ -137,7 +148,8 @@ export async function startServer({ sessions, cert, port = 0, staticDir = null, 
       envoyer(recepteur, msg);
     });
 
-    ws.on('close', () => {
+    ws.on('close', (code) => {
+      if (process.env.MIROIR_DEBUG === '1') console.log(`[${new Date().toISOString()}] socket telephone fermee code=${code}`);
       clearTimeout(minuteur);
       if (telephone !== ws) return;
       telephone = null;
@@ -166,9 +178,9 @@ export async function startServer({ sessions, cert, port = 0, staticDir = null, 
     const chemin = new URL(req.url, 'https://miroir.local').pathname;
     const local = LOOPBACK.has(req.socket.remoteAddress);
     if (chemin === '/ws/phone') {
-      wss.handleUpgrade(req, socket, head, attacherTelephone);
+      wss.handleUpgrade(req, socket, head, (ws) => { suivreVie(ws); attacherTelephone(ws); });
     } else if (chemin === '/ws/receiver' && local) {
-      wss.handleUpgrade(req, socket, head, attacherRecepteur);
+      wss.handleUpgrade(req, socket, head, (ws) => { suivreVie(ws); attacherRecepteur(ws); });
     } else {
       socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
       socket.destroy();

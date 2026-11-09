@@ -67,6 +67,11 @@ class SignalingClient(
     /** Reprend la session apres une coupure, sans nouveau scan. */
     suspend fun reconnect(): ConnectResult {
         val cle = resumeKey ?: return ConnectResult.Rejected("invalid_token")
+        // On abandonne l'ancienne socket avant de reprendre : le Mac la ferme pendant la reprise, et sa
+        // fermeture tardive ne doit pas etre prise pour une nouvelle coupure (boucle de reprises).
+        val ancienne = socket
+        socket = null
+        ancienne?.cancel()
         val res = essaieToutes(JSONObject().put("type", "resume").put("resumeKey", cle).toString())
         if (res is ConnectResult.Ready) reprise.tryEmit(Unit)
         return res

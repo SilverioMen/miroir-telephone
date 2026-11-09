@@ -170,4 +170,21 @@ class SignalingClientTest {
         val s = demarre { null }
         assertEquals(ConnectResult.Rejected("invalid_token"), client(s).reconnect())
     }
+
+    @Test
+    fun `reconnect ne signale pas de perte quand le serveur ferme l'ancienne socket pendant la reprise`() = runBlocking {
+        lateinit var s: Serveur
+        s = demarre(connexions = 2) { texte ->
+            if (texte.contains("resume")) s.sockets.first().close(1001, "remplace")
+            """{"type":"ready","resumeKey":"k8"}"""
+        }
+        val c = client(s)
+        assertEquals(ConnectResult.Ready("k8"), c.connect())
+        val perte = coroutineScope {
+            val attente = async(start = CoroutineStart.UNDISPATCHED) { kotlinx.coroutines.withTimeoutOrNull(800) { c.dropped.first() } }
+            assertEquals(ConnectResult.Ready("k8"), c.reconnect())
+            attente.await()
+        }
+        assertEquals(null, perte)
+    }
 }
