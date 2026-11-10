@@ -69,6 +69,14 @@ function surveiller() {
         extra = ` | ${r.frameWidth}x${r.frameHeight} ${Math.round(r.framesPerSecond || 0)} i/s, perdues ${r.framesDropped || 0}, gels ${r.freezeCount || 0}, decodage ${Math.round(((r.totalDecodeTime || 0) / (r.framesDecoded || 1)) * 1000)} ms`;
       }
     });
+    const paires = {};
+    const candidats = {};
+    stats.forEach((r) => { if (r.type === 'local-candidate' || r.type === 'remote-candidate') candidats[r.id] = `${r.address || r.ip}:${r.port}/${r.protocol}`; });
+    stats.forEach((r) => {
+      if (r.type === 'candidate-pair' && (r.nominated || r.state === 'succeeded')) paires.sel = `${candidats[r.localCandidateId]} <-> ${candidats[r.remoteCandidateId]} etat ${r.state}`;
+      if (r.type === 'inbound-rtp' && r.kind === 'video') paires.rtp = `octets ${r.bytesReceived || 0}, paquets ${r.packetsReceived || 0}, perdus ${r.packetsLost || 0}, images ${r.framesReceived || 0}/${r.framesDecoded || 0}`;
+    });
+    extra += ` | ice ${pc.iceConnectionState}, conn ${pc.connectionState} | ${paires.sel || 'aucune paire'} | ${paires.rtp || 'pas de flux video'}`;
     debug.textContent = `latence estimée ${Math.round(rtt / 2 + tampon)} ms (aller-retour ${Math.round(rtt)} ms, tampon ${Math.round(tampon)} ms)${extra}`;
   }, 1000);
 }

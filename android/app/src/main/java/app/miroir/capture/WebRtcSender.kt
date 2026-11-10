@@ -3,6 +3,7 @@ package app.miroir.capture
 import android.content.Context
 import android.content.Intent
 import android.media.projection.MediaProjection
+import app.miroir.net.IceFilter
 import app.miroir.net.SignalMessage
 import app.miroir.net.SignalingClient
 import kotlinx.coroutines.CoroutineScope
@@ -54,6 +55,9 @@ class WebRtcSender(
         }
         val eglBase = EglBase.create().also { egl = it }
         factory = PeerConnectionFactory.builder()
+            // Le point d'acces du telephone (ap0) n'est pas un reseau declare au systeme : sans cette option,
+            // WebRTC l'ignore et aucune route video n'existe vers un Mac connecte au point d'acces.
+            .setOptions(PeerConnectionFactory.Options().apply { disableNetworkMonitor = true })
             .setVideoEncoderFactory(DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true))
             .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase.eglBaseContext))
             .createPeerConnectionFactory()
@@ -133,7 +137,9 @@ class WebRtcSender(
 
     private fun observateur() = object : PeerConnection.Observer {
         override fun onIceCandidate(c: IceCandidate) {
-            signaling.send(SignalMessage.Ice(c.sdp, c.sdpMid, c.sdpMLineIndex))
+            if (IceFilter.garde(c.sdp, signaling.adresseMac)) {
+                signaling.send(SignalMessage.Ice(c.sdp, c.sdpMid, c.sdpMLineIndex))
+            }
         }
         override fun onSignalingChange(s: PeerConnection.SignalingState) = Unit
         override fun onIceConnectionChange(s: PeerConnection.IceConnectionState) = Unit

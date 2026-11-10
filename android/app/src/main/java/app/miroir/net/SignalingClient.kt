@@ -43,6 +43,11 @@ class SignalingClient(
     @Volatile
     private var socket: WebSocket? = null
 
+    /** Adresse du Mac qui a repondu : sert a ne garder que les candidats ICE de son reseau. */
+    @Volatile
+    var adresseMac: String? = null
+        private set
+
     @Volatile
     private var resumeKey: String? = null
 
@@ -125,6 +130,7 @@ class SignalingClient(
         val res = withTimeoutOrNull(connectTimeoutMs) { resultat.await() } ?: ConnectResult.Unreachable
         if (res is ConnectResult.Ready) {
             socket = ws
+            adresseMac = adresse
             resumeKey = res.resumeKey
         } else {
             ws.cancel()
